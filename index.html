@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Случайная задача</title>
+    <link rel="stylesheet" href="style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <h1>Случайная задача</h1>
+
+      <label for="block-select" class="label">Блок</label>
+      <select id="block-select" class="input">
+        <option value="Учеба">Учеба</option>
+        <option value="Уборка">Уборка</option>
+        <option value="Готовка">Готовка</option>
+        <option value="Уход">Уход</option>
+      </select>
+
+      <div class="actions">
+        <button id="pick-btn" class="btn">Выбрать</button>
+        <button id="done-btn" class="btn success hidden">Сделано</button>
+        <button id="reset-btn" class="btn danger">Сбросить данные</button>
+      </div>
+
+      <section id="result" class="result" aria-live="polite">Выберите блок и нажмите «Выбрать».</section>
+    </main>
+
+    <script src="app.js"></script>
+  </body>
+</html>
