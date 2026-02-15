@@ -25,6 +25,23 @@
       </div>
 
       <section id="result" class="result" aria-live="polite">Выберите блок и нажмите «Выбрать».</section>
+
+      <section class="task-create">
+        <h2>Добавить задачу</h2>
+        <label for="task-title" class="label">Название задачи</label>
+        <input id="task-title" class="input" type="text" placeholder="Например, помыть пол" />
+
+        <label for="task-period" class="label">Периодичность (дней)</label>
+        <input id="task-period" class="input" type="number" min="1" value="1" />
+
+        <button id="add-task-btn" class="btn">Добавить задачу</button>
+      </section>
+
+      <section class="task-list-wrap">
+        <h2>Задачи блока</h2>
+        <div id="empty-block" class="empty-block hidden">В этом блоке нет задач</div>
+        <ul id="task-list" class="task-list"></ul>
+      </section>
     </main>
 
     <script src="app.js"></script>

@@ -1,30 +1,16 @@
 const STORAGE_KEY = "random_task_picker_tasks_v1";
 const BLOCKS = ["Учеба", "Уборка", "Готовка", "Уход"];
 
-const STARTER_TASKS = [
-  { block: "Учеба", title: "Повторить 20 новых слов", period_days: 1, last_done: null },
-  { block: "Учеба", title: "Решить 5 задач по математике", period_days: 2, last_done: null },
-  { block: "Учеба", title: "Прочитать 10 страниц книги", period_days: 1, last_done: null },
-  { block: "Учеба", title: "Сделать конспект одной темы", period_days: 3, last_done: null },
-  { block: "Уборка", title: "Протереть пыль на столе и полках", period_days: 2, last_done: null },
-  { block: "Уборка", title: "Пропылесосить комнату", period_days: 3, last_done: null },
-  { block: "Уборка", title: "Разобрать рабочий стол", period_days: 1, last_done: null },
-  { block: "Уборка", title: "Поменять постельное белье", period_days: 7, last_done: null },
-  { block: "Готовка", title: "Приготовить простой салат", period_days: 1, last_done: null },
-  { block: "Готовка", title: "Сварить суп на 2 дня", period_days: 4, last_done: null },
-  { block: "Готовка", title: "Сделать полезный перекус", period_days: 2, last_done: null },
-  { block: "Готовка", title: "Испечь что-то к чаю", period_days: 5, last_done: null },
-  { block: "Уход", title: "Сделать растяжку 10 минут", period_days: 1, last_done: null },
-  { block: "Уход", title: "Нанести увлажняющую маску", period_days: 3, last_done: null },
-  { block: "Уход", title: "Сделать прогулку 30 минут", period_days: 1, last_done: null },
-  { block: "Уход", title: "Лечь спать до 23:00", period_days: 2, last_done: null },
-];
-
 const blockSelect = document.getElementById("block-select");
 const pickBtn = document.getElementById("pick-btn");
 const doneBtn = document.getElementById("done-btn");
 const resetBtn = document.getElementById("reset-btn");
 const result = document.getElementById("result");
+const addTaskBtn = document.getElementById("add-task-btn");
+const taskTitleInput = document.getElementById("task-title");
+const taskPeriodInput = document.getElementById("task-period");
+const taskList = document.getElementById("task-list");
+const emptyBlock = document.getElementById("empty-block");
 
 let selectedTaskIndex = null;
 
@@ -40,7 +26,7 @@ function dateFromISO(dateString) {
 function normalizeTask(task) {
   const normalized = {
     block: String(task.block || ""),
-    title: String(task.title || ""),
+    title: String(task.title || "").trim(),
     period_days: Math.max(1, Number(task.period_days) || 1),
     last_done: task.last_done === null ? null : String(task.last_done),
   };
@@ -59,26 +45,22 @@ function normalizeTask(task) {
 function loadTasks() {
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
-    const starter = STARTER_TASKS.map((task) => ({ ...task }));
-    saveTasks(starter);
-    return starter;
+    return [];
   }
 
   try {
     const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length === 0) {
-      const starter = STARTER_TASKS.map((task) => ({ ...task }));
-      saveTasks(starter);
-      return starter;
+    if (!Array.isArray(parsed)) {
+      saveTasks([]);
+      return [];
     }
 
-    const normalized = parsed.map(normalizeTask);
+    const normalized = parsed.map(normalizeTask).filter((task) => task.title.length > 0);
     saveTasks(normalized);
     return normalized;
   } catch {
-    const starter = STARTER_TASKS.map((task) => ({ ...task }));
-    saveTasks(starter);
-    return starter;
+    saveTasks([]);
+    return [];
   }
 }
 
@@ -102,6 +84,51 @@ function isTaskAvailable(task, todayStr) {
   nextAvailable.setDate(nextAvailable.getDate() + task.period_days);
 
   return today >= nextAvailable;
+}
+
+function renderTaskList() {
+  const chosenBlock = blockSelect.value;
+  const tasks = loadTasks();
+  const blockTasks = tasks
+    .map((task, index) => ({ task, index }))
+    .filter(({ task }) => task.block === chosenBlock);
+
+  taskList.innerHTML = "";
+
+  if (blockTasks.length === 0) {
+    emptyBlock.classList.remove("hidden");
+    return;
+  }
+
+  emptyBlock.classList.add("hidden");
+
+  for (const { task, index } of blockTasks) {
+    const li = document.createElement("li");
+    li.className = "task-item";
+
+    const info = document.createElement("div");
+    info.className = "task-meta";
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "task-title";
+    titleEl.textContent = task.title;
+
+    const periodEl = document.createElement("div");
+    periodEl.textContent = `Периодичность: ${task.period_days} дн.`;
+
+    const lastDoneEl = document.createElement("div");
+    lastDoneEl.textContent = `Последнее выполнение: ${task.last_done || "никогда"}`;
+
+    info.append(titleEl, periodEl, lastDoneEl);
+
+    const deleteBtn = document.createElement("button");
+    deleteBtn.className = "btn danger small";
+    deleteBtn.textContent = "Удалить";
+    deleteBtn.dataset.index = String(index);
+
+    li.append(info, deleteBtn);
+    taskList.append(li);
+  }
 }
 
 function pickRandomTask() {
@@ -146,18 +173,71 @@ function markDone() {
   selectedTaskIndex = null;
   doneBtn.classList.add("hidden");
   result.textContent = "DONE_OK";
+  renderTaskList();
+}
+
+function addTask() {
+  const title = taskTitleInput.value.trim();
+  const periodDays = Math.max(1, Number(taskPeriodInput.value) || 1);
+
+  if (!title) {
+    result.textContent = "Введите название задачи";
+    taskTitleInput.focus();
+    return;
+  }
+
+  const tasks = loadTasks();
+  tasks.push({
+    block: blockSelect.value,
+    title,
+    period_days: periodDays,
+    last_done: null,
+  });
+
+  saveTasks(tasks);
+  taskTitleInput.value = "";
+  taskPeriodInput.value = "1";
+  result.textContent = "Задача добавлена";
+  renderTaskList();
+}
+
+function deleteTask(index) {
+  const tasks = loadTasks();
+  if (!tasks[index]) {
+    return;
+  }
+
+  tasks.splice(index, 1);
+  saveTasks(tasks);
+
+  selectedTaskIndex = null;
+  doneBtn.classList.add("hidden");
+  result.textContent = "Задача удалена";
+  renderTaskList();
 }
 
 function resetData() {
-  const starter = STARTER_TASKS.map((task) => ({ ...task }));
-  saveTasks(starter);
+  localStorage.clear();
   selectedTaskIndex = null;
   doneBtn.classList.add("hidden");
   result.textContent = "Данные сброшены";
+  renderTaskList();
 }
 
 pickBtn.addEventListener("click", pickRandomTask);
 doneBtn.addEventListener("click", markDone);
 resetBtn.addEventListener("click", resetData);
+addTaskBtn.addEventListener("click", addTask);
+blockSelect.addEventListener("change", renderTaskList);
+taskList.addEventListener("click", (event) => {
+  const target = event.target;
+  if (!(target instanceof HTMLButtonElement)) {
+    return;
+  }
 
-loadTasks();
+  if (target.dataset.index !== undefined) {
+    deleteTask(Number(target.dataset.index));
+  }
+});
+
+renderTaskList();
