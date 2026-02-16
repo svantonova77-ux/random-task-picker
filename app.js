@@ -38,23 +38,6 @@ function normalizeBlockName(name) {
   return String(name || "").trim();
 }
 
-function uniqueBlocksFromTasks(tasks) {
-  const seen = new Set();
-  const blocks = [];
-
-  for (const task of tasks) {
-    const blockName = normalizeBlockName(task.block);
-    if (!blockName || seen.has(blockName)) {
-      continue;
-    }
-
-    seen.add(blockName);
-    blocks.push(blockName);
-  }
-
-  return blocks;
-}
-
 function normalizeTask(task, blocks) {
   const normalized = {
     block: normalizeBlockName(task.block),
@@ -77,13 +60,30 @@ function normalizeTask(task, blocks) {
 function loadBlocks() {
   const raw = localStorage.getItem(BLOCKS_STORAGE_KEY);
   if (!raw) {
-    return null;
+    const defaults = ["Мой блок"];
+    saveBlocks(defaults);
+    return defaults;
   }
 
   try {
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) {
-      return null;
+      const defaults = ["Мой блок"];
+      saveBlocks(defaults);
+      return defaults;
+    }
+
+    if (parsed.length === 0) {
+      const defaults = ["Мой блок"];
+      saveBlocks(defaults);
+      return defaults;
+    }
+
+    const hasEmpty = parsed.some((item) => normalizeBlockName(item).length === 0);
+    if (hasEmpty) {
+      const defaults = ["Мой блок"];
+      saveBlocks(defaults);
+      return defaults;
     }
 
     const cleaned = [];
@@ -94,14 +94,26 @@ function loadBlocks() {
       }
     }
 
-    return cleaned.length > 0 ? cleaned : null;
+    if (cleaned.length === 0) {
+      const defaults = ["Мой блок"];
+      saveBlocks(defaults);
+      return defaults;
+    }
+
+    if (cleaned.length !== parsed.length) {
+      saveBlocks(cleaned);
+    }
+
+    return cleaned;
   } catch {
-    return null;
+    const defaults = ["Мой блок"];
+    saveBlocks(defaults);
+    return defaults;
   }
 }
 
 function loadTasks() {
-  const blocks = getBlocks();
+  const blocks = loadBlocks();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     return [];
@@ -123,39 +135,36 @@ function loadTasks() {
   }
 }
 
-function getBlocks() {
-  const blocks = loadBlocks();
-  if (blocks && blocks.length > 0) {
-    return blocks;
+function migrateTasksToExistingBlocks(blocks) {
+  const rawTasks = localStorage.getItem(STORAGE_KEY);
+  if (!rawTasks) {
+    return;
   }
 
-  return ["Мой блок"];
+  let parsedTasks = [];
+  try {
+    const candidate = JSON.parse(rawTasks);
+    if (Array.isArray(candidate)) {
+      parsedTasks = candidate;
+    }
+  } catch {
+    parsedTasks = [];
+  }
+
+  const migrated = parsedTasks.map((task) => {
+    const normalizedTask = normalizeTask(task, blocks);
+    if (!blocks.includes(normalizedTask.block)) {
+      normalizedTask.block = blocks[0];
+    }
+    return normalizedTask;
+  });
+
+  saveTasks(migrated);
 }
 
 function initializeData() {
-  const rawTasks = localStorage.getItem(STORAGE_KEY);
-  let parsedTasks = [];
-
-  if (rawTasks) {
-    try {
-      const candidate = JSON.parse(rawTasks);
-      if (Array.isArray(candidate)) {
-        parsedTasks = candidate;
-      }
-    } catch {
-      parsedTasks = [];
-    }
-  }
-
-  const storedBlocks = loadBlocks();
-  if (!storedBlocks) {
-    const derivedBlocks = uniqueBlocksFromTasks(parsedTasks);
-    if (derivedBlocks.length > 0) {
-      saveBlocks(derivedBlocks);
-    } else {
-      saveBlocks(["Мой блок"]);
-    }
-  }
+  const blocks = loadBlocks();
+  migrateTasksToExistingBlocks(blocks);
 
   const normalizedTasks = loadTasks();
   saveTasks(normalizedTasks);
@@ -164,7 +173,7 @@ function initializeData() {
 }
 
 function renderBlockOptions(preferredBlock) {
-  const blocks = getBlocks();
+  const blocks = loadBlocks();
   const currentBlock = preferredBlock || blockSelect.value;
   const selectedBlock = blocks.includes(currentBlock) ? currentBlock : blocks[0];
 
@@ -198,11 +207,19 @@ function isTaskAvailable(task, todayStr) {
 }
 
 function renderTaskList() {
-  const chosenBlock = blockSelect.value;
+  const blocks = loadBlocks();
+  const chosenBlock = blocks.includes(blockSelect.value) ? blockSelect.value : blocks[0];
+  if (blockSelect.value !== chosenBlock) {
+    blockSelect.value = chosenBlock;
+  }
+
   const tasks = loadTasks();
   const blockTasks = tasks
     .map((task, index) => ({ task, index }))
     .filter(({ task }) => task.block === chosenBlock);
+
+  const diagnostics = document.getElementById("diagnostics");
+  diagnostics.textContent = `Блоков: ${blocks.length}, Задач в блоке: ${blockTasks.length}`;
 
   taskList.innerHTML = "";
 
@@ -320,6 +337,14 @@ function markTaskDone(index) {
 }
 
 function addTask() {
+  const blocks = loadBlocks();
+  const selectedBlock = blocks.includes(blockSelect.value) ? blockSelect.value : "";
+  if (!selectedBlock) {
+    result.textContent = "Не выбран блок для добавления задачи";
+    refreshUI(blocks[0]);
+    return;
+  }
+
   const title = taskTitleInput.value.trim();
   const periodDays = Math.max(1, Number(taskPeriodInput.value) || 1);
 
@@ -331,7 +356,7 @@ function addTask() {
 
   const tasks = loadTasks();
   tasks.push({
-    block: blockSelect.value,
+    block: selectedBlock,
     title,
     period_days: periodDays,
     last_done: null,
@@ -412,7 +437,7 @@ function addBlock() {
     return;
   }
 
-  const blocks = getBlocks();
+  const blocks = loadBlocks();
   if (blocks.includes(name)) {
     result.textContent = "Блок с таким названием уже существует";
     return;
@@ -427,6 +452,11 @@ function addBlock() {
 
 function renameBlock() {
   const currentBlock = blockSelect.value;
+  if (!currentBlock) {
+    refreshUI(loadBlocks()[0]);
+    return;
+  }
+
   const nameRaw = prompt("Новое название блока", currentBlock);
   if (nameRaw === null) {
     return;
@@ -438,7 +468,7 @@ function renameBlock() {
     return;
   }
 
-  const blocks = getBlocks();
+  const blocks = loadBlocks();
   if (nextName !== currentBlock && blocks.includes(nextName)) {
     result.textContent = "Блок с таким названием уже существует";
     return;
@@ -457,7 +487,12 @@ function renameBlock() {
 
 function deleteBlock() {
   const currentBlock = blockSelect.value;
-  const blocks = getBlocks();
+  const blocks = loadBlocks();
+
+  if (!currentBlock || !blocks.includes(currentBlock)) {
+    refreshUI(blocks[0]);
+    return;
+  }
 
   if (!confirm(`Удалить блок «${currentBlock}»?`)) {
     return;
