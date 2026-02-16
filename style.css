@@ -119,6 +119,13 @@ h2 {
   word-break: break-word;
 }
 
+
+.diagnostics {
+  margin-top: 8px;
+  font-size: 0.82rem;
+  color: #6b7280;
+}
+
 .task-create,
 .task-list-wrap {
   margin-top: 18px;
