@@ -63,6 +63,16 @@ h2 {
   gap: 10px;
 }
 
+.block-controls {
+  margin-bottom: 6px;
+}
+
+.block-actions {
+  display: grid;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
 .btn {
   border: none;
   padding: 10px 12px;
@@ -81,8 +91,13 @@ h2 {
 
 .btn.small {
   min-height: 36px;
-  width: auto;
   padding: 8px 10px;
+  width: auto;
+}
+
+.block-actions .btn.small,
+.task-actions .btn.small {
+  width: 100%;
 }
 
 .btn:active {
@@ -122,8 +137,7 @@ h2 {
   border-radius: 10px;
   padding: 10px;
   display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
+  flex-direction: column;
   gap: 10px;
 }
 
@@ -137,6 +151,11 @@ h2 {
   margin-bottom: 4px;
 }
 
+.task-actions {
+  display: grid;
+  gap: 8px;
+}
+
 .empty-block {
   border: 1px dashed #d1d5db;
   border-radius: 10px;
@@ -147,5 +166,15 @@ h2 {
 @media (min-width: 640px) {
   body {
     padding-top: 32px;
+  }
+
+  .task-item {
+    flex-direction: row;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  .task-actions {
+    min-width: 130px;
   }
 }
