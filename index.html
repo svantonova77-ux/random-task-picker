@@ -11,12 +11,14 @@
       <h1>Случайная задача</h1>
 
       <label for="block-select" class="label">Блок</label>
-      <select id="block-select" class="input">
-        <option value="Учеба">Учеба</option>
-        <option value="Уборка">Уборка</option>
-        <option value="Готовка">Готовка</option>
-        <option value="Уход">Уход</option>
-      </select>
+      <div class="block-controls">
+        <select id="block-select" class="input"></select>
+        <div class="block-actions">
+          <button id="add-block-btn" class="btn small">Добавить блок</button>
+          <button id="rename-block-btn" class="btn small">Переименовать</button>
+          <button id="delete-block-btn" class="btn danger small">Удалить блок</button>
+        </div>
+      </div>
 
       <div class="actions">
         <button id="pick-btn" class="btn">Выбрать</button>

@@ -1,7 +1,10 @@
 const STORAGE_KEY = "random_task_picker_tasks_v1";
-const BLOCKS = ["Учеба", "Уборка", "Готовка", "Уход"];
+const BLOCKS_STORAGE_KEY = "random_task_picker_blocks_v1";
 
 const blockSelect = document.getElementById("block-select");
+const addBlockBtn = document.getElementById("add-block-btn");
+const renameBlockBtn = document.getElementById("rename-block-btn");
+const deleteBlockBtn = document.getElementById("delete-block-btn");
 const pickBtn = document.getElementById("pick-btn");
 const doneBtn = document.getElementById("done-btn");
 const resetBtn = document.getElementById("reset-btn");
@@ -23,26 +26,82 @@ function dateFromISO(dateString) {
   return new Date(year, month - 1, day);
 }
 
-function normalizeTask(task) {
+function saveTasks(tasks) {
+  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+}
+
+function saveBlocks(blocks) {
+  localStorage.setItem(BLOCKS_STORAGE_KEY, JSON.stringify(blocks));
+}
+
+function normalizeBlockName(name) {
+  return String(name || "").trim();
+}
+
+function uniqueBlocksFromTasks(tasks) {
+  const seen = new Set();
+  const blocks = [];
+
+  for (const task of tasks) {
+    const blockName = normalizeBlockName(task.block);
+    if (!blockName || seen.has(blockName)) {
+      continue;
+    }
+
+    seen.add(blockName);
+    blocks.push(blockName);
+  }
+
+  return blocks;
+}
+
+function normalizeTask(task, blocks) {
   const normalized = {
-    block: String(task.block || ""),
+    block: normalizeBlockName(task.block),
     title: String(task.title || "").trim(),
     period_days: Math.max(1, Number(task.period_days) || 1),
     last_done: task.last_done === null ? null : String(task.last_done),
   };
 
-  if (!BLOCKS.includes(normalized.block)) {
-    normalized.block = BLOCKS[0];
+  if (!normalized.block) {
+    normalized.block = blocks[0];
   }
 
-  if (!/^\d{4}-\d{2}-\d{2}$/.test(normalized.last_done || "")) {
+  if (!/^(\d{4})-(\d{2})-(\d{2})$/.test(normalized.last_done || "")) {
     normalized.last_done = null;
   }
 
   return normalized;
 }
 
+function loadBlocks() {
+  const raw = localStorage.getItem(BLOCKS_STORAGE_KEY);
+  if (!raw) {
+    return null;
+  }
+
+  try {
+    const parsed = JSON.parse(raw);
+    if (!Array.isArray(parsed)) {
+      return null;
+    }
+
+    const cleaned = [];
+    for (const item of parsed) {
+      const name = normalizeBlockName(item);
+      if (name && !cleaned.includes(name)) {
+        cleaned.push(name);
+      }
+    }
+
+    return cleaned.length > 0 ? cleaned : null;
+  } catch {
+    return null;
+  }
+}
+
 function loadTasks() {
+  const blocks = getBlocks();
   const raw = localStorage.getItem(STORAGE_KEY);
   if (!raw) {
     return [];
@@ -55,7 +114,7 @@ function loadTasks() {
       return [];
     }
 
-    const normalized = parsed.map(normalizeTask).filter((task) => task.title.length > 0);
+    const normalized = parsed.map((task) => normalizeTask(task, blocks)).filter((task) => task.title.length > 0);
     saveTasks(normalized);
     return normalized;
   } catch {
@@ -64,8 +123,60 @@ function loadTasks() {
   }
 }
 
-function saveTasks(tasks) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
+function getBlocks() {
+  const blocks = loadBlocks();
+  if (blocks && blocks.length > 0) {
+    return blocks;
+  }
+
+  return ["Мой блок"];
+}
+
+function initializeData() {
+  const rawTasks = localStorage.getItem(STORAGE_KEY);
+  let parsedTasks = [];
+
+  if (rawTasks) {
+    try {
+      const candidate = JSON.parse(rawTasks);
+      if (Array.isArray(candidate)) {
+        parsedTasks = candidate;
+      }
+    } catch {
+      parsedTasks = [];
+    }
+  }
+
+  const storedBlocks = loadBlocks();
+  if (!storedBlocks) {
+    const derivedBlocks = uniqueBlocksFromTasks(parsedTasks);
+    if (derivedBlocks.length > 0) {
+      saveBlocks(derivedBlocks);
+    } else {
+      saveBlocks(["Мой блок"]);
+    }
+  }
+
+  const normalizedTasks = loadTasks();
+  saveTasks(normalizedTasks);
+
+  renderBlockOptions();
+}
+
+function renderBlockOptions(preferredBlock) {
+  const blocks = getBlocks();
+  const currentBlock = preferredBlock || blockSelect.value;
+  const selectedBlock = blocks.includes(currentBlock) ? currentBlock : blocks[0];
+
+  blockSelect.innerHTML = "";
+  for (const block of blocks) {
+    const option = document.createElement("option");
+    option.value = block;
+    option.textContent = block;
+    blockSelect.append(option);
+  }
+
+  blockSelect.value = selectedBlock;
 }
 
 function isTaskAvailable(task, todayStr) {
@@ -121,14 +232,41 @@ function renderTaskList() {
 
     info.append(titleEl, periodEl, lastDoneEl);
 
+    const actions = document.createElement("div");
+    actions.className = "task-actions";
+
+    const taskDoneBtn = document.createElement("button");
+    taskDoneBtn.className = "btn success small";
+    taskDoneBtn.textContent = "Сделано";
+    taskDoneBtn.dataset.action = "done";
+    taskDoneBtn.dataset.index = String(index);
+
+    const editBtn = document.createElement("button");
+    editBtn.className = "btn small";
+    editBtn.textContent = "Редактировать";
+    editBtn.dataset.action = "edit";
+    editBtn.dataset.index = String(index);
+
     const deleteBtn = document.createElement("button");
     deleteBtn.className = "btn danger small";
     deleteBtn.textContent = "Удалить";
+    deleteBtn.dataset.action = "delete";
     deleteBtn.dataset.index = String(index);
 
-    li.append(info, deleteBtn);
+    actions.append(taskDoneBtn, editBtn, deleteBtn);
+    li.append(info, actions);
     taskList.append(li);
   }
+}
+
+function refreshUI(preferredBlock) {
+  renderBlockOptions(preferredBlock);
+  renderTaskList();
+}
+
+function clearSelectedTask() {
+  selectedTaskIndex = null;
+  doneBtn.classList.add("hidden");
 }
 
 function pickRandomTask() {
@@ -142,8 +280,7 @@ function pickRandomTask() {
     .filter(({ task }) => isTaskAvailable(task, todayStr));
 
   if (available.length === 0) {
-    selectedTaskIndex = null;
-    doneBtn.classList.add("hidden");
+    clearSelectedTask();
     result.textContent = "Нет доступных задач в этом блоке\nNO_TASKS";
     return;
   }
@@ -154,24 +291,30 @@ function pickRandomTask() {
   result.textContent = `${randomItem.task.title}`;
 }
 
-function markDone() {
+function markSelectedDone() {
   if (selectedTaskIndex === null) {
     result.textContent = "DONE_ERROR";
     return;
   }
 
+  markTaskDone(selectedTaskIndex);
+}
+
+function markTaskDone(index) {
   const tasks = loadTasks();
-  if (!tasks[selectedTaskIndex]) {
-    selectedTaskIndex = null;
-    doneBtn.classList.add("hidden");
+  if (!tasks[index]) {
+    clearSelectedTask();
     result.textContent = "DONE_ERROR";
     return;
   }
 
-  tasks[selectedTaskIndex].last_done = todayISO();
+  tasks[index].last_done = todayISO();
   saveTasks(tasks);
-  selectedTaskIndex = null;
-  doneBtn.classList.add("hidden");
+
+  if (selectedTaskIndex === index) {
+    clearSelectedTask();
+  }
+
   result.textContent = "DONE_OK";
   renderTaskList();
 }
@@ -201,6 +344,43 @@ function addTask() {
   renderTaskList();
 }
 
+function editTask(index) {
+  const tasks = loadTasks();
+  if (!tasks[index]) {
+    return;
+  }
+
+  const currentTask = tasks[index];
+  const nextTitleRaw = prompt("Новое название задачи", currentTask.title);
+  if (nextTitleRaw === null) {
+    return;
+  }
+
+  const nextTitle = nextTitleRaw.trim();
+  if (!nextTitle) {
+    result.textContent = "Название не может быть пустым";
+    return;
+  }
+
+  const nextPeriodRaw = prompt("Новая периодичность (дней)", String(currentTask.period_days));
+  if (nextPeriodRaw === null) {
+    return;
+  }
+
+  const nextPeriod = Math.max(1, Number(nextPeriodRaw) || 0);
+  if (!Number.isFinite(nextPeriod) || nextPeriod < 1) {
+    result.textContent = "Периодичность должна быть от 1 дня";
+    return;
+  }
+
+  currentTask.title = nextTitle;
+  currentTask.period_days = nextPeriod;
+  saveTasks(tasks);
+
+  result.textContent = "Задача обновлена";
+  renderTaskList();
+}
+
 function deleteTask(index) {
   const tasks = loadTasks();
   if (!tasks[index]) {
@@ -210,34 +390,185 @@ function deleteTask(index) {
   tasks.splice(index, 1);
   saveTasks(tasks);
 
-  selectedTaskIndex = null;
-  doneBtn.classList.add("hidden");
+  if (selectedTaskIndex === index) {
+    clearSelectedTask();
+  } else if (selectedTaskIndex !== null && selectedTaskIndex > index) {
+    selectedTaskIndex -= 1;
+  }
+
   result.textContent = "Задача удалена";
   renderTaskList();
 }
 
+function addBlock() {
+  const nameRaw = prompt("Название нового блока");
+  if (nameRaw === null) {
+    return;
+  }
+
+  const name = normalizeBlockName(nameRaw);
+  if (!name) {
+    result.textContent = "Название блока не может быть пустым";
+    return;
+  }
+
+  const blocks = getBlocks();
+  if (blocks.includes(name)) {
+    result.textContent = "Блок с таким названием уже существует";
+    return;
+  }
+
+  blocks.push(name);
+  saveBlocks(blocks);
+  clearSelectedTask();
+  result.textContent = "Блок добавлен";
+  refreshUI(name);
+}
+
+function renameBlock() {
+  const currentBlock = blockSelect.value;
+  const nameRaw = prompt("Новое название блока", currentBlock);
+  if (nameRaw === null) {
+    return;
+  }
+
+  const nextName = normalizeBlockName(nameRaw);
+  if (!nextName) {
+    result.textContent = "Название блока не может быть пустым";
+    return;
+  }
+
+  const blocks = getBlocks();
+  if (nextName !== currentBlock && blocks.includes(nextName)) {
+    result.textContent = "Блок с таким названием уже существует";
+    return;
+  }
+
+  const updatedBlocks = blocks.map((block) => (block === currentBlock ? nextName : block));
+  saveBlocks(updatedBlocks);
+
+  const tasks = loadTasks().map((task) => (task.block === currentBlock ? { ...task, block: nextName } : task));
+  saveTasks(tasks);
+
+  clearSelectedTask();
+  result.textContent = "Блок переименован";
+  refreshUI(nextName);
+}
+
+function deleteBlock() {
+  const currentBlock = blockSelect.value;
+  const blocks = getBlocks();
+
+  if (!confirm(`Удалить блок «${currentBlock}»?`)) {
+    return;
+  }
+
+  const tasks = loadTasks();
+  const blockTasksCount = tasks.filter((task) => task.block === currentBlock).length;
+
+  let mode = "A";
+  if (blockTasksCount > 0) {
+    const modeRaw = prompt(
+      "Что сделать с задачами блока?\nA — удалить все задачи блока\nB — перенести в другой блок\nВведите A или B",
+      "A",
+    );
+
+    if (modeRaw === null) {
+      return;
+    }
+
+    mode = modeRaw.trim().toUpperCase();
+    if (!["A", "B"].includes(mode)) {
+      result.textContent = "Нужно выбрать A или B";
+      return;
+    }
+  }
+
+  const remainingBlocks = blocks.filter((block) => block !== currentBlock);
+  let updatedTasks = tasks;
+  let nextSelectedBlock = remainingBlocks[0] || "Мой блок";
+
+  if (mode === "A") {
+    updatedTasks = tasks.filter((task) => task.block !== currentBlock);
+  } else {
+    if (remainingBlocks.length === 0) {
+      result.textContent = "Нельзя перенести задачи: нет другого блока";
+      return;
+    }
+
+    const targetRaw = prompt(
+      `Введите название блока для переноса:\n${remainingBlocks.join(", ")}`,
+      remainingBlocks[0],
+    );
+
+    if (targetRaw === null) {
+      return;
+    }
+
+    const targetBlock = normalizeBlockName(targetRaw);
+    if (!remainingBlocks.includes(targetBlock)) {
+      result.textContent = "Укажите существующий блок для переноса";
+      return;
+    }
+
+    updatedTasks = tasks.map((task) => (task.block === currentBlock ? { ...task, block: targetBlock } : task));
+    nextSelectedBlock = targetBlock;
+  }
+
+  const finalBlocks = remainingBlocks.length > 0 ? remainingBlocks : ["Мой блок"];
+  saveBlocks(finalBlocks);
+  saveTasks(updatedTasks);
+
+  clearSelectedTask();
+  result.textContent = "Блок удален";
+  refreshUI(nextSelectedBlock);
+}
+
 function resetData() {
   localStorage.clear();
-  selectedTaskIndex = null;
-  doneBtn.classList.add("hidden");
+  clearSelectedTask();
+  initializeData();
   result.textContent = "Данные сброшены";
   renderTaskList();
 }
 
 pickBtn.addEventListener("click", pickRandomTask);
-doneBtn.addEventListener("click", markDone);
+doneBtn.addEventListener("click", markSelectedDone);
 resetBtn.addEventListener("click", resetData);
 addTaskBtn.addEventListener("click", addTask);
-blockSelect.addEventListener("change", renderTaskList);
+addBlockBtn.addEventListener("click", addBlock);
+renameBlockBtn.addEventListener("click", renameBlock);
+deleteBlockBtn.addEventListener("click", deleteBlock);
+blockSelect.addEventListener("change", () => {
+  clearSelectedTask();
+  renderTaskList();
+});
+
 taskList.addEventListener("click", (event) => {
   const target = event.target;
   if (!(target instanceof HTMLButtonElement)) {
     return;
   }
 
-  if (target.dataset.index !== undefined) {
-    deleteTask(Number(target.dataset.index));
+  const index = Number(target.dataset.index);
+  if (!Number.isInteger(index)) {
+    return;
+  }
+
+  if (target.dataset.action === "done") {
+    markTaskDone(index);
+    return;
+  }
+
+  if (target.dataset.action === "edit") {
+    editTask(index);
+    return;
+  }
+
+  if (target.dataset.action === "delete") {
+    deleteTask(index);
   }
 });
 
+initializeData();
 renderTaskList();
